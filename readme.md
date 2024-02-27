@@ -6,3 +6,5 @@ command_list.txt
 
 config.ini
 あとの拡張用。とりあえず触らなくて大丈夫。
+
+sleep3
