@@ -153,7 +153,6 @@ def login_and_execute_commands(host_name, username, password, command_list):
             sys.exit()
         return
     outputs = []
-    print(host_name)
     for command in command_list:
         command_file = re.sub(r'\|.*$', '', command)
         print("retrieving " + str(command_file) + "data. please wait...")
@@ -238,6 +237,7 @@ def main():
     for host_name in host_names:
         login_and_execute_commands(host_name, username, password, command_list)
     messagebox.showinfo("処理完了", "処理が完了しました。プログラムを終了します。")
+    sys.exit()
 
 
 if __name__ == "__main__":
