@@ -3,7 +3,6 @@ from jnpr.junos.factory import loadyaml
 from jnpr.junos.utils.start_shell import StartShell
 import re
 
-# pyezのデモ版 あとで編集して使ってみる
 # デバイスの接続情報を設定
 hostname = 'YOUR_DEVICE_IP'
 username = 'YOUR_USERNAME'
@@ -17,11 +16,15 @@ dev.open()
 ss = StartShell(dev)
 ss.open()
 
-# messagesログを取得するためのコマンドを実行
-output = ss.run('show log messages')
+# messagesログとmessages.0.gz ~ messages.9.gzを取得するためのコマンドを実行
+output = ""
+for i in range(10):
+    cmd = f'show log messages.{i}.gz'
+    output += ss.run(cmd)
+output += ss.run('show log messages')
 
 # ログをファイルに保存
-with open('messages_log.txt', 'w') as f:
+with open('all_messages_logs.txt', 'w') as f:
     f.write(output)
 
 # 接続を閉じる
