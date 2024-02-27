@@ -106,21 +106,20 @@ def login_and_execute_commands(host_name, username, password, command_list):
     device_log_folder = os.path.join(BASE_DIR, "device_logs", host_name)
     os.makedirs(device_log_folder, exist_ok=True)
 
-    #機器接続
-    print(f"connect to {host_name}....")
+    # 機器接続
+    print(f"Trying connect to {host_name}....")
     try:
         connection = ConnectHandler(**device)
         print(f"Successfully connected to {host_name}.")
     except NetmikoTimeoutException as e:
         error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
-        print(f"Failed to connect to {host_name}. Error {str(e)}")
+        print(f"Failed to connect to {host_name}. Error: Timeout")
         log_error(error_msg)
         user_input = messagebox.askquestion("Connection Failed", f"{host_name} への接続がタイムアウトしました。 \n このまま次のホストへ接続を開始しますか？")
         if user_input == "no":
             messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
             sys.exit()
         return
-
     except NetmikoAuthenticationException as e:
         user_input = messagebox.askquestion("認証エラー", f"認証エラーが発生しました。 \n {host_name} と {username}が正しいことを確認してください。 \n パスワードを再入力して再実行しますか？")
         if user_input == "yes":
@@ -131,13 +130,12 @@ def login_and_execute_commands(host_name, username, password, command_list):
                     # 新しいパスワードを使用して再接続を試みる
                     connection = ConnectHandler(**device)
                     print(f"Successfully connected to {host_name}.")
-                except:
+                except NetmikoAuthenticationException:
                     error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
-                    print(f"Failed to connect to {host_name}. Error {str(e)}")
+                    print(f"Failed to connect to {host_name}. Error: Authentication Error")
                     log_error(error_msg)
                     messagebox.showerror('認証エラー', '認証に失敗しました。 プログラムを終了します。')
                     sys.exit()
-
     except Exception as e:
         error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
         print(error_msg)
@@ -147,7 +145,6 @@ def login_and_execute_commands(host_name, username, password, command_list):
             messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
             sys.exit()
         return
-
     outputs = []
     print(host_name)
     for command in command_list:
@@ -159,15 +156,8 @@ def login_and_execute_commands(host_name, username, password, command_list):
             error_msg = f"{host_name} 上で {command} の実行に失敗しました。Error: {str(e)}"
             print(error_msg)
             log_error(error_msg)
-
-            # エラー発生時続行するかユーザに選択させる
-            user_input = messagebox.askquestion("コマンド実行エラー", f"{host_name}上で{command}の実行に失敗しました。\n 処理を続行しますか？ Error: {str(e)}")
-            if user_input == "no":
-                messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
-                sys.exit()
-            continue
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        command_file = re.sub(r'\|.*$', '', command) # パイプが入っているとファイル保存時にエラーになるのでパイプ以降を削除
+        command_file = re.sub(r'\|.*$', '', command)  # パイプが入っているとファイル保存時にエラーになるのでパイプ以降を削除
         logfile = f"{host_name}_{timestamp}_{command_file}.txt"
         logfile_path = os.path.join(device_log_folder, logfile)
         with open(logfile_path, 'w') as f:
@@ -202,13 +192,13 @@ def read_csv(filename):
                     if item:
                         if '-' in item:  # ハイフンが含まれている場合は処理を行う
                             parts = item.split('-')
-                            if len(parts) == 3: #ハイフンが2個含まれている場合
+                            if len(parts) == 3: # ハイフンが2個含まれている場合
                                 hostname = f"{parts[2]}.{parts[0]}-{parts[1]}.bb.jp.com.bb.com"
-                            elif len(parts) == 2: #ハイフンが1個含まれている場合
+                            elif len(parts) == 2: # ハイフンが1個含まれている場合
                                 hostname = f"{parts[1]}.{parts[0]}.bb.jp.com.bb.com"
                             else:
-                                messagebox.showerror("エラー", f"不正な形式のホストネームが入力されています。: {item}" )
-                                log_error( f"不正な形式のホストネームが入力されています。: {item}" )
+                                messagebox.showerror("エラー", f"不正な形式のホストネームが入力されています。: {item}")
+                                log_error(f"不正な形式のホストネームが入力されています。: {item}")
                                 sys.exit()
                             hostnames.append(hostname)
                         elif re.match(r'^(\d{1,3}\.){3}\d{1,3}$', item):  # IPv4アドレスの場合のみ追加
