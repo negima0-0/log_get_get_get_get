@@ -1,0 +1,12 @@
+show configuration | display set | no-more
+show log messages | no-more
+show log messages.0.gz | no-more
+show log messages.1.gz | no-more
+show log messages.2.gz | no-more
+show log messages.3.gz | no-more
+show log messages.4.gz | no-more
+show log messages.5.gz | no-more
+show log messages.6.gz | no-more
+show log messages.7.gz | no-more
+show log messages.8.gz | no-more
+show log messages.9.gz | no-more
