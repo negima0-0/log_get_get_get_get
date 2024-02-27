@@ -14,8 +14,9 @@ username = ""
 password = ""
 
 # 実行ファイルのディレクトリパスを取得
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+# __file__で絶対パスを取得するとpyinstallerでexe化したときにtempフォルダを参照するためsysargに変更
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(sys.argv[0])
 # 設定ファイルのファイルパス
 CONFIG_FILE = os.path.join(BASE_DIR, "config.ini")
 
@@ -27,10 +28,13 @@ ERROR_LOG_FILE = os.path.join(BASE_DIR, "error_log.txt")
 def read_file_paths():
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
-    host_list_file = os.path.join(BASE_DIR, config.get("FilePaths", "host_list_file"))
-    target_host_file = os.path.join(BASE_DIR, config.get("FilePaths", "target_host_file"))
-    command_list_file = os.path.join(BASE_DIR, config.get("FilePaths", "command_list_file"))
-    return host_list_file, target_host_file, command_list_file
+    try:
+        target_host_file = os.path.join(BASE_DIR, config.get("FilePaths", "target_host_file"))
+        command_list_file = os.path.join(BASE_DIR, config.get("FilePaths", "command_list_file"))
+    except configparser.NoSectionError as e:
+        print(f"指定したセクションが見つかりません。 Error: {str(e)}")
+
+    return target_host_file, command_list_file
 
 
 # フォームの作成と送信ボタンのクリック時の処理
@@ -83,16 +87,18 @@ def detect_encoding(filename):
 
 
 # コマンドリストを読み込む
-def read_command_list(filename):
+def read_command_list(command_list_file):
     try:
-        with open(filename, "r") as f:
+        with open(command_list_file, "r") as f:
             return [line.strip() for line in f]
     except Exception as e:
-        error_msg = f"コマンドリストを読み込めませんでした。 {filename}: {str(e)}"
+        error_msg = f"コマンドリストを読み込めませんでした。 {command_list_file}: Error: {str(e)}"
+        messagebox.showerror("エラー", "コマンドリストを読み込めませんでした。")
         log_error(error_msg)
         sys.exit()
 
 
+#機器接続
 def login_and_execute_commands(host_name, username, password, command_list):
     device = {
         "device_type": 'juniper',
@@ -107,6 +113,7 @@ def login_and_execute_commands(host_name, username, password, command_list):
     os.makedirs(device_log_folder, exist_ok=True)
 
     # 機器接続
+    print("##################################")
     print(f"Trying connect to {host_name}....")
     try:
         connection = ConnectHandler(**device)
@@ -225,16 +232,12 @@ def log_error(error_message):
 def main():
     # ユーザ名とパスワードを取得
     get_credentials()
-    host_list_file, target_host_file, command_list_file = read_file_paths()
-    # filename = r"./host_list.txt"
-    filename = host_list_file
-    # target_host_file = r"./target_host.csv"
-    file_encoding = detect_encoding(filename)
-    # command_list_file = r"./command_list.txt"
+    target_host_file, command_list_file = read_file_paths()
     command_list = read_command_list(command_list_file)
     host_names = read_csv(target_host_file)
     for host_name in host_names:
         login_and_execute_commands(host_name, username, password, command_list)
+    messagebox.showinfo("処理完了", "処理が完了しました。プログラムを終了します。")
 
 
 if __name__ == "__main__":
