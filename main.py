@@ -1,16 +1,10 @@
 from netmiko import ConnectHandler
-import datetime
-import chardet
-import re
-import csv
+from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 import tkinter as tk
-from tkinter import messagebox
-import sys
-import os
-import configparser
-import logging
+from tkinter import messagebox, simpledialog
+import sys, os, re, csv, logging, configparser, datetime, chardet
 
-#error.logのフォーマット設定
+# error.logのフォーマット設定
 logging.basicConfig(filename='error.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # textから読む形式になっている ←やってみた
@@ -27,6 +21,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.ini")
 
 # エラーログファイルのパス
 ERROR_LOG_FILE = os.path.join(BASE_DIR, "error_log.txt")
+
 
 # ファイルパスを設定ファイルから読み取る関数
 def read_file_paths():
@@ -80,10 +75,12 @@ def get_credentials():
         log_error(f"ログイン情報を取得できませんでした: {str(e)}")
         sys.exit()
 
+
 def detect_encoding(filename):
     with open(filename, "rb") as f:
         result = chardet.detect(f.read())
     return result["encoding"]
+
 
 # コマンドリストを読み込む
 def read_command_list(filename):
@@ -95,6 +92,7 @@ def read_command_list(filename):
         log_error(error_msg)
         sys.exit()
 
+
 def login_and_execute_commands(host_name, username, password, command_list):
     device = {
         "device_type": 'juniper',
@@ -103,14 +101,51 @@ def login_and_execute_commands(host_name, username, password, command_list):
         'password': password,
         'session_log': 'netmiko_session_log',
         }
+
+    # 各機器ごとのフォルダを作成する
+    device_log_folder = os.path.join(BASE_DIR, "device_logs", host_name)
+    os.makedirs(device_log_folder, exist_ok=True)
+
+    #機器接続
     print(f"connect to {host_name}....")
     try:
         connection = ConnectHandler(**device)
         print(f"Successfully connected to {host_name}.")
+    except NetmikoTimeoutException as e:
+        error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
+        print(f"Failed to connect to {host_name}. Error {str(e)}")
+        log_error(error_msg)
+        user_input = messagebox.askquestion("Connection Failed", f"{host_name} への接続がタイムアウトしました。 \n このまま次のホストへ接続を開始しますか？")
+        if user_input == "no":
+            messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
+            sys.exit()
+        return
+
+    except NetmikoAuthenticationException as e:
+        user_input = messagebox.askquestion("認証エラー", f"認証エラーが発生しました。 \n {host_name} と {username}が正しいことを確認してください。 \n パスワードを再入力して再実行しますか？")
+        if user_input == "yes":
+            new_password = simpledialog.askstring("Password Input", "パスワードを入力してください")
+            if new_password:
+                device["password"] = new_password
+                try:
+                    # 新しいパスワードを使用して再接続を試みる
+                    connection = ConnectHandler(**device)
+                    print(f"Successfully connected to {host_name}.")
+                except:
+                    error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
+                    print(f"Failed to connect to {host_name}. Error {str(e)}")
+                    log_error(error_msg)
+                    messagebox.showerror('認証エラー', '認証に失敗しました。 プログラムを終了します。')
+                    sys.exit()
+
     except Exception as e:
         error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
         print(error_msg)
         log_error(error_msg)
+        user_input = messagebox.askquestion("Connection Failed", f"{host_name} への接続に失敗しました。 \n このまま次のホストへ接続を開始しますか？")
+        if user_input == "no":
+            messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
+            sys.exit()
         return
 
     outputs = []
@@ -118,14 +153,26 @@ def login_and_execute_commands(host_name, username, password, command_list):
     for command in command_list:
         command_file = re.sub(r'\|.*$', '', command)
         print("retrieving " + str(command_file) + "data. please wait...")
-        output = connection.send_command(command, read_timeout=300)
-        # outputs.append(output) #出力をすべてマージするときはこのコメントアウトを外していい感じにする
+        try:
+            output = connection.send_command(command, read_timeout=300)
+        except Exception as e:
+            error_msg = f"{host_name} 上で {command} の実行に失敗しました。Error: {str(e)}"
+            print(error_msg)
+            log_error(error_msg)
+
+            # エラー発生時続行するかユーザに選択させる
+            user_input = messagebox.askquestion("コマンド実行エラー", f"{host_name}上で{command}の実行に失敗しました。\n 処理を続行しますか？ Error: {str(e)}")
+            if user_input == "no":
+                messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
+                sys.exit()
+            continue
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        command_file = re.sub(r'\|.*$', '', command)
+        command_file = re.sub(r'\|.*$', '', command) # パイプが入っているとファイル保存時にエラーになるのでパイプ以降を削除
         logfile = f"{host_name}_{timestamp}_{command_file}.txt"
-        with open(logfile, 'w') as f:
-            # for output in outputs: #出力をすべてマージするときはこのコメントアウトを外していい感じにする
+        logfile_path = os.path.join(device_log_folder, logfile)
+        with open(logfile_path, 'w') as f:
             f.write(output + "\n\n")
+
 
 # 接続対象のcsvを読み込む
 def read_csv(filename):
@@ -137,11 +184,11 @@ def read_csv(filename):
             encoding = result['encoding']
     except FileNotFoundError:
         messagebox.showerror("エラー", f"{filename}が見つかりません")
-        log_error("エラー", f"{filename}が見つかりません")
+        log_error(f"{filename}が見つかりません")
         sys.exit()
     except Exception as e:
         messagebox.showerror("エラー", f"定義されていないエラーが発生しました。{str(e)}")
-        log_error("エラー", f"定義されていないエラーが発生しました。{str(e)}")
+        log_error(f"定義されていないエラーが発生しました。{str(e)}")
         sys.exit()
 
     # CSVファイルを読み取り、ホスト名をリストに格納
@@ -151,23 +198,28 @@ def read_csv(filename):
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 for item in row:
-                    parts = item.split('-')
-                    if len(parts) == 3: #ハイフンが2個含まれている場合
-                        hostname = f"{parts[2]}.{parts[0]}-{parts[1]}.bb.jp.com.bb.com"
-                    elif len(parts) == 2: #ハイフンが1個含まれている場合
-                        hostname = f"{parts[1]}.{parts[0]}.bb.jp.com.bb.com"
-                    else:
-                        messagebox.showerror("エラー", f"不正な形式のホストネームが入力されています。: {item}" )
-                        log_error("エラー", f"不正な形式のホストネームが入力されています。: {item}" )
-                        sys.exit()
-                    hostnames.append(hostname)
+                    item = item.strip()
+                    if item:
+                        if '-' in item:  # ハイフンが含まれている場合は処理を行う
+                            parts = item.split('-')
+                            if len(parts) == 3: #ハイフンが2個含まれている場合
+                                hostname = f"{parts[2]}.{parts[0]}-{parts[1]}.bb.jp.com.bb.com"
+                            elif len(parts) == 2: #ハイフンが1個含まれている場合
+                                hostname = f"{parts[1]}.{parts[0]}.bb.jp.com.bb.com"
+                            else:
+                                messagebox.showerror("エラー", f"不正な形式のホストネームが入力されています。: {item}" )
+                                log_error( f"不正な形式のホストネームが入力されています。: {item}" )
+                                sys.exit()
+                            hostnames.append(hostname)
+                        elif re.match(r'^(\d{1,3}\.){3}\d{1,3}$', item):  # IPv4アドレスの場合のみ追加
+                            hostnames.append(item)
     except FileNotFoundError:
         messagebox.showerror("エラー", f"{filename}が見つかりません。")
-        log_error("エラー", f"{filename}が見つかりません。")
+        log_error(f"{filename}が見つかりません。")
         sys.exit()
     except Exception as e:
         messagebox.showerror("エラー", f"定義されていないエラーが発生しました。{str(e)}")
-        log_error("エラー", f"定義されていないエラーが発生しました。{str(e)}")
+        log_error(f"定義されていないエラーが発生しました。{str(e)}")
         sys.exit()
 
     return hostnames
@@ -178,6 +230,7 @@ def log_error(error_message):
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         error_log.write(f"{timestamp}: {error_message}\n")
         print(f"Error occurred: {error_message}")  # エラーメッセージを出力する
+
 
 def main():
     # ユーザ名とパスワードを取得
