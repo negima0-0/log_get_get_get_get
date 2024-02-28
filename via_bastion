@@ -1,0 +1,70 @@
+def login_and_execute_commands(host_name, username, password, command_list):
+    device = {
+        "device_type": 'juniper',
+        'host': host_name,
+        'username': username,
+        'password': password,
+        'session_log': 'netmiko_session_log',
+        'ssh_proxy_cmd': f'ssh -W %h:%p {username}@jump_server',  # jump_serverは踏み台サーバのホスト名またはIPアドレスに置き換えてください
+        }
+
+    # 各機器ごとのフォルダを作成する
+    device_log_folder = os.path.join(BASE_DIR, "device_logs", host_name)
+    os.makedirs(device_log_folder, exist_ok=True)
+
+    # 機器接続
+    print("##################################")
+    print(f"Trying connect to {host_name} via jump server....")
+    try:
+        connection = ConnectHandler(**device)
+        print(f"Successfully connected to {host_name}.")
+    except NetmikoTimeoutException as e:
+        error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
+        print(f"Failed to connect to {host_name}. Error: Timeout")
+        log_error(error_msg)
+        user_input = messagebox.askquestion("Connection Failed", f"{host_name} への接続がタイムアウトしました。 \n このまま次のホストへ接続を開始しますか？")
+        if user_input == "no":
+            messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
+            sys.exit()
+        return
+    except NetmikoAuthenticationException as e:
+        user_input = messagebox.askquestion("認証エラー", f"認証エラーが発生しました。 \n {host_name} と {username}が正しいことを確認してください。 \n パスワードを再入力して再実行しますか？")
+        if user_input == "yes":
+            new_password = simpledialog.askstring("Password Input", "パスワードを入力してください")
+            if new_password:
+                device["password"] = new_password
+                try:
+                    # 新しいパスワードを使用して再接続を試みる
+                    connection = ConnectHandler(**device)
+                    print(f"Successfully connected to {host_name}.")
+                except NetmikoAuthenticationException:
+                    error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
+                    print(f"Failed to connect to {host_name}. Error: Authentication Error")
+                    log_error(error_msg)
+                    messagebox.showerror('認証エラー', '認証に失敗しました。 プログラムを終了します。')
+                    sys.exit()
+    except Exception as e:
+        error_msg = f"Failed to connect to {host_name}. Error {str(e)}"
+        print(error_msg)
+        log_error(error_msg)
+        user_input = messagebox.askquestion("Connection Failed", f"{host_name} への接続に失敗しました。 \n このまま次のホストへ接続を開始しますか？")
+        if user_input == "no":
+            messagebox.showerror("中断", "処理を中止し、プログラムを終了します。")
+            sys.exit()
+        return
+    outputs = []
+    for command in command_list:
+        command_file = re.sub(r'\|.*$', '', command)
+        print("retrieving " + str(command_file) + "data. please wait...")
+        try:
+            output = connection.send_command(command, read_timeout=300)
+        except Exception as e:
+            error_msg = f"{host_name} 上で {command} の実行に失敗しました。Error: {str(e)}"
+            print(error_msg)
+            log_error(error_msg)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        command_file = re.sub(r'\|.*$', '', command)  # パイプが入っているとファイル保存時にエラーになるのでパイプ以降を削除
+        logfile = f"{host_name}_{timestamp}_{command_file}.txt"
+        logfile_path = os.path.join(device_log_folder, logfile)
+        with open(logfile_path, 'w') as f:
+            f.write(output + "\n\n")
