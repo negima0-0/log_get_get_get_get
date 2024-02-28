@@ -18,8 +18,27 @@ def login_and_execute_commands(host_name, username, password, command_list, proc
     # 処理の進捗状況を表示
     print(f"Processing host {processed_hosts}/{total_hosts}: {host_name}...")
 
-    # 以前のコードをそのまま使用
-    # ...
+    device_info = {
+        "device_type": 'juniper',
+        'host': host_name,
+        'username': username,
+        'password': password,
+        'session_log': 'netmiko_session_log',
+    }
+
+    connection = establish_ssh_connection(device_info)
+    
+    # コマンドの実行
+    for index, command in enumerate(command_list, start=1):
+        print(f"Executing command {index}/{len(command_list)}: {command}...")
+        try:
+            output = connection.send_command(command, read_timeout=300)
+            print(f"Command {index}/{len(command_list)}: {command} executed successfully.")
+        except Exception as e:
+            print(f"Failed to execute command {index}/{len(command_list)}: {command}. Error: {str(e)}")
+    
+    # 接続を閉じる
+    connection.disconnect()
 
     # 処理の進捗状況を表示
     print(f"Host {processed_hosts}/{total_hosts}: {host_name} processed successfully.")
